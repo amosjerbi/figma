@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LanguageTool Text Checker</title>
+  <style>
+    :root {
+      --primary: #6366F1;
+      --primary-hover: #4F46E5;
+      --danger: #EF4444;
+      --danger-hover: #DC2626;
+      --gray-50: #F9FAFB;
+      --gray-100: #F3F4F6;
+      --gray-200: #E5E7EB;
+      --gray-300: #D1D5DB;
+      --gray-600: #4B5563;
+      --gray-700: #374151;
+      --gray-800: #1F2937;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: white;
+      color: var(--gray-800);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .button-row button {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    #stopCheck {
+      flex: 0.5;
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--gray-100);
+      color: var(--gray-700);
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    button:hover {
+      background: var(--gray-200);
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    #scanSelection, #scanDocument {
+      background: var(--primary);
+      color: white;
+    }
+
+    #scanSelection:hover, #scanDocument:hover {
+      background: var(--primary-hover);
+    }
+
+    .stop-btn {
+      background: var(--danger) !important;
+      color: white;
+    }
+
+    .stop-btn:hover {
+      background: var(--danger-hover) !important;
+    }
+
+    .fix-all-container {
+      display: none;
+      margin-top: 8px;
+    }
+
+    .fix-all-btn {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    .fix-all-btn:hover {
+      background: var(--primary-hover);
+    }
+
+    .error-count {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 10px;
+      border-radius: 16px;
+      font-size: 13px;
+      font-weight: 400;
+    }
+
+    .fix-progress {
+      height: 4px;
+      background: var(--gray-100);
+      margin-top: 12px;
+      border-radius: 2px;
+      overflow: hidden;
+      display: none;
+    }
+
+    #error {
+      color: var(--danger);
+      padding: 12px 16px;
+      background: #FEF2F2;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      display: none;
+      font-weight: 500;
+      border: 1px solid #FEE2E2;
+    }
+
+    #loading {
+      text-align: center;
+      color: var(--gray-600);
+      padding: 24px;
+      display: none;
+      font-weight: 500;
+    }
+
+    #results {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: white;
+      border-radius: 12px;
+      border: 1px solid var(--gray-200);
+    }
+
+    .layer-group {
+      background: var(--gray-50);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--gray-200);
+    }
+
+    .layer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: white;
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    .layer-name {
+      font-weight: 600;
+      color: var(--gray-800);
+    }
+
+    .layer-issues {
+      font-size: 13px;
+      color: var(--gray-600);
+      background: var(--gray-100);
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    .issue {
+      padding: 16px;
+      border-bottom: 1px solid var(--gray-200);
+      background: white;
+    }
+
+    .issue:last-child {
+      border-bottom: none;
+    }
+
+    .issue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .issue-title {
+      font-weight: 500;
+      color: var(--gray-800);
+      background: var(--gray-100);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    .issue-type {
+      font-size: 12px;
+      color: var(--gray-600);
+      background: var(--gray-100);
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-left: 8px;
+    }
+
+    .issue-message {
+      color: var(--gray-700);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .suggestion-btn {
+      background: white;
+      border: 1px solid var(--gray-200);
+      color: var(--gray-700);
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+
+    .suggestion-btn:hover {
+      background: var(--gray-50);
+      border-color: var(--gray-300);
+    }
+
+    .suggestion-btn:disabled {
+      background: var(--gray-50);
+      border-color: var(--gray-200);
+      color: var(--primary);
+    }
+
+    /* Success message styling */
+    #results p {
+      text-align: center;
+      color: var(--gray-600);
+      padding: 24px;
+      background: var(--gray-50);
+      border-radius: 8px;
+      margin: 0;
+    }
+
+    /* Remove loading animation */
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    /* Remove progress bar animation */
+    .fix-progress::after {
+      content: '';
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: var(--primary);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="button-row">
+      <button id="scanSelection">Check Selection</button>
+      <button id="scanDocument">Check All Layers</button>
+      <button id="stopCheck" class="stop-btn" style="display: none;">Stop</button>
+    </div>
+    
+    <div class="fix-all-container">
+      <button id="fixAll" class="fix-all-btn">Fix All Issues <span class="error-count"></span></button>
+      <div class="fix-progress"></div>
+    </div>
+    
+    <div id="error" class="error"></div>
+    <div id="loading">Checking text...</div>
+    <div id="results"></div>
+  </div>
+
+  <script>
+    let currentNodeId = null;
+    let currentNodeInfo = null;
+    let currentText = '';
+    let isScanning = false;
+    let controller = null;
+    let currentIssues = [];
+    let allLayerIssues = new Map(); // Store issues for all layers
+    let layersWithErrors = new Set();
+    const API_URL = 'https://api.languagetool.org/v2/check';
+    
+    document.getElementById('scanSelection').onclick = () => {
+      if (isScanning) return;
+      startCheck('get-text');
+    };
+    
+    document.getElementById('scanDocument').onclick = () => {
+      if (isScanning) return;
+      allLayerIssues.clear();
+      startCheck('get-document-text');
+    };
+
+    document.getElementById('stopCheck').onclick = () => {
+      stopCheck();
+    };
+
+    document.getElementById('fixAll').onclick = async () => {
+      const fixAllBtn = document.getElementById('fixAll');
+      const errorCount = fixAllBtn.querySelector('.error-count');
+      const progressDiv = document.querySelector('.fix-progress');
+      fixAllBtn.disabled = true;
+      
+      try {
+        let totalFixed = 0;
+        const totalIssues = Array.from(allLayerIssues.values())
+          .reduce((sum, issues) => sum + issues.length, 0);
+        
+        for (const [nodeId, issues] of allLayerIssues.entries()) {
+          const sortedIssues = [...issues].sort((a, b) => b.offset - a.offset);
+          
+          for (const issue of sortedIssues) {
+            if (issue.replacements && issue.replacements.length > 0) {
+              await applyFix({
+                offset: issue.offset,
+                length: issue.length,
+                replacement: issue.replacements[0].value,
+                nodeId: nodeId
+              });
+              totalFixed++;
+              errorCount.textContent = `${totalIssues - totalFixed} remaining`;
+            }
+          }
+        }
+        
+        // Show success message
+        document.getElementById('results').innerHTML = 
+          '<p style="text-align: center; color: #666;"> All issues fixed!</p>';
+        document.querySelector('.fix-all-container').style.display = 'none';
+        allLayerIssues.clear();
+      } catch (error) {
+        showError('Error applying fixes: ' + error.message);
+      } finally {
+        fixAllBtn.disabled = false;
+      }
+    };
+
+    async function applyFix(fix) {
+      return new Promise((resolve, reject) => {
+        parent.postMessage({ pluginMessage: { type: 'apply-fix', fix } }, '*');
+        
+        const handleMessage = (event) => {
+          const msg = event.data.pluginMessage;
+          if (msg.type === 'text-content') {
+            window.removeEventListener('message', handleMessage);
+            currentText = msg.text; // Update the current text
+            resolve(msg.text);
+          } else if (msg.type === 'error') {
+            window.removeEventListener('message', handleMessage);
+            reject(new Error(msg.message));
+          }
+        };
+        
+        window.addEventListener('message', handleMessage);
+      });
+    }
+
+    function startCheck(type) {
+      isScanning = true;
+      controller = new AbortController();
+      showLoading(true);
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('error').style.display = 'none';
+      document.querySelector('.fix-all-container').style.display = 'none';
+      allLayerIssues.clear();
+      layersWithErrors.clear();
+      parent.postMessage({ pluginMessage: { type } }, '*');
+    }
+
+    function stopCheck() {
+      if (controller) {
+        controller.abort();
+      }
+      isScanning = false;
+      controller = null;
+      document.getElementById('stopCheck').style.display = 'none';
+      showLoading(false);
+    }
+    
+    function showLoading(show) {
+      const loadingDiv = document.getElementById('loading');
+      const stopBtn = document.getElementById('stopCheck');
+      loadingDiv.style.display = show ? 'block' : 'none';
+      stopBtn.style.display = show ? 'block' : 'none';
+    }
+    
+    function showError(message) {
+      const errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.style.display = message ? 'block' : 'none';
+    }
+
+    async function checkText(text, nodeInfo = null) {
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          signal: controller?.signal,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `text=${encodeURIComponent(text)}&language=en-US`
+        });
+        
+        if (!response.ok) throw new Error('API request failed');
+        
+        const data = await response.json();
+        return data.matches.map(match => ({
+          offset: match.offset,
+          length: match.length,
+          text: text.substring(match.offset, match.offset + match.length),
+          message: match.message,
+          type: match.rule.category.name,
+          replacements: match.replacements
+        }));
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Check cancelled');
+        }
+        throw error;
+      }
+    }
+    
+    function createIssueElement(issue, nodeInfo = null) {
+      const container = document.createElement('div');
+      container.className = 'issue';
+      
+      const header = document.createElement('div');
+      header.className = 'issue-header';
+      
+      const title = document.createElement('div');
+      title.className = 'issue-title';
+      title.textContent = issue.text;
+      
+      const type = document.createElement('div');
+      type.className = 'issue-type';
+      type.textContent = issue.type;
+      
+      header.appendChild(title);
+      header.appendChild(type);
+      
+      const message = document.createElement('div');
+      message.className = 'issue-message';
+      message.textContent = issue.message;
+      
+      const suggestions = document.createElement('div');
+      suggestions.className = 'suggestions';
+      
+      if (issue.replacements && issue.replacements.length > 0) {
+        issue.replacements.forEach(replacement => {
+          const button = document.createElement('button');
+          button.className = 'suggestion-btn';
+          button.textContent = replacement.value;
+          button.onclick = async () => {
+            try {
+              await applyFix({
+                offset: issue.offset,
+                length: issue.length,
+                replacement: replacement.value,
+                nodeId: nodeInfo ? nodeInfo.nodeId : currentNodeId
+              });
+              button.disabled = true;
+              button.textContent = ' Applied';
+            } catch (error) {
+              showError(error.message);
+            }
+          };
+          suggestions.appendChild(button);
+        });
+      }
+      
+      container.appendChild(header);
+      container.appendChild(message);
+      container.appendChild(suggestions);
+      
+      return container;
+    }
+
+    function createLayerGroup(nodeInfo, issues) {
+      const group = document.createElement('div');
+      group.className = 'layer-group';
+      
+      const header = document.createElement('div');
+      header.className = 'layer-header';
+      
+      const layerName = document.createElement('div');
+      layerName.className = 'layer-name';
+      layerName.textContent = nodeInfo.nodeName;
+      
+      const issueCount = document.createElement('div');
+      issueCount.className = 'layer-issues';
+      issueCount.textContent = `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`;
+      
+      header.appendChild(layerName);
+      header.appendChild(issueCount);
+      group.appendChild(header);
+      
+      issues.forEach(issue => {
+        group.appendChild(createIssueElement(issue, nodeInfo));
+      });
+      
+      return group;
+    }
+
+    onmessage = async (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'text-content') {
+        if (!msg.nodeInfo) {
+          showError('No text layer information provided');
+          return;
+        }
+        
+        try {
+          const issues = await checkText(msg.text, msg.nodeInfo);
+          if (issues.length > 0) {
+            allLayerIssues.set(msg.nodeInfo.nodeId, issues);
+            layersWithErrors.add(msg.nodeInfo.nodeId);
+            
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.appendChild(createLayerGroup(msg.nodeInfo, issues));
+            
+            // Update Fix All button
+            const totalIssues = Array.from(allLayerIssues.values())
+              .reduce((sum, issues) => sum + issues.length, 0);
+            
+            document.querySelector('.fix-all-container').style.display = 'block';
+            const errorCount = document.querySelector('.error-count');
+            errorCount.textContent = `${totalIssues} ${totalIssues === 1 ? 'issue' : 'issues'}`;
+          }
+        } catch (error) {
+          if (error.message !== 'Check cancelled') {
+            showError(error.message);
+          }
+        }
+      } else if (msg.type === 'check-complete') {
+        showLoading(false);
+        isScanning = false;
+        controller = null;
+        
+        const totalIssues = Array.from(allLayerIssues.values())
+          .reduce((sum, issues) => sum + issues.length, 0);
+        
+        if (totalIssues === 0) {
+          document.getElementById('results').innerHTML = 
+            '<p style="text-align: center; color: #666;">No issues found in any text layer.</p>';
+        }
+      } else if (msg.type === 'error') {
+        showError(msg.message);
+        showLoading(false);
+        isScanning = false;
+        controller = null;
+      }
+    };
+  </script>
+</body>
+</html>
