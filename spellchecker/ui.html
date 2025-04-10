@@ -301,7 +301,7 @@
     </div>
     
     <div id="error" class="error"></div>
-    <div id="loading">Checking text...</div>
+    <div id="loading">Checking text... <span id="progressText"></span></div>
     <div id="results"></div>
   </div>
 
@@ -427,30 +427,64 @@
     }
 
     async function checkText(text, nodeInfo = null) {
-      try {
-        const response = await fetch(API_URL, {
-          method: 'POST',
-          signal: controller?.signal,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `text=${encodeURIComponent(text)}&language=en-US`
-        });
-        
-        if (!response.ok) throw new Error('API request failed');
-        
-        const data = await response.json();
-        return data.matches.map(match => ({
-          offset: match.offset,
-          length: match.length,
-          text: text.substring(match.offset, match.offset + match.length),
-          message: match.message,
-          type: match.rule.category.name,
-          replacements: match.replacements
-        }));
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          throw new Error('Check cancelled');
+      const maxRetries = 3;
+      let retryCount = 0;
+      
+      while (retryCount < maxRetries) {
+        try {
+          // Check if fetch call should be aborted
+          if (controller?.signal?.aborted) {
+            throw new Error('Check cancelled');
+          }
+          
+          const response = await fetch(API_URL, {
+            method: 'POST',
+            signal: controller?.signal,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `text=${encodeURIComponent(text)}&language=en-US`
+          });
+          
+          if (!response.ok) {
+            if (response.status === 429) {
+              throw new Error('Rate limit exceeded. Try again in a few moments.');
+            } else {
+              throw new Error(`API request failed with status: ${response.status}`);
+            }
+          }
+          
+          const data = await response.json();
+          
+          if (!data || !data.matches) {
+            throw new Error('Invalid API response format');
+          }
+          
+          return data.matches.map(match => ({
+            offset: match.offset,
+            length: match.length,
+            text: text.substring(match.offset, match.offset + match.length),
+            message: match.message,
+            type: match.rule.category.name,
+            replacements: match.replacements
+          }));
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            throw new Error('Check cancelled');
+          }
+          
+          if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            // Network error - check if network access is enabled
+            retryCount++;
+            if (retryCount >= maxRetries) {
+              throw new Error('Network error: Failed to connect to the grammar checking service. Check your plugin permissions in manifest.json.');
+            }
+            
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+          
+          throw error;
         }
-        throw error;
       }
     }
     
@@ -538,7 +572,9 @@
     onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       
-      if (msg.type === 'text-content') {
+      if (msg.type === 'scan-started') {
+        document.getElementById('progressText').textContent = '(Loading pages...)';
+      } else if (msg.type === 'text-content') {
         if (!msg.nodeInfo) {
           showError('No text layer information provided');
           return;
@@ -566,6 +602,9 @@
             showError(error.message);
           }
         }
+      } else if (msg.type === 'progress-update') {
+        const progressText = document.getElementById('progressText');
+        progressText.textContent = `(${msg.processed}/${msg.total} layers)`;
       } else if (msg.type === 'check-complete') {
         showLoading(false);
         isScanning = false;

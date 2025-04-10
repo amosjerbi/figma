@@ -10,8 +10,18 @@ async function loadTextNodeFonts(node) {
 }
 
 // Get all text nodes in the document recursively
-function getAllTextNodes(node = figma.root) {
+async function getAllTextNodes(node = figma.currentPage) {
   let textNodes = [];
+  
+  // If it's a page, make sure it's loaded first
+  if (node.type === 'PAGE') {
+    try {
+      await node.loadAsync();
+    } catch (error) {
+      console.error(`Failed to load page ${node.name}:`, error);
+      return textNodes;
+    }
+  }
   
   if (node.type === 'TEXT') {
     textNodes.push(node);
@@ -20,7 +30,8 @@ function getAllTextNodes(node = figma.root) {
   // Recursively check children if they exist
   if ('children' in node) {
     for (const child of node.children) {
-      textNodes = textNodes.concat(getAllTextNodes(child));
+      const childNodes = await getAllTextNodes(child);
+      textNodes = textNodes.concat(childNodes);
     }
   }
   
@@ -50,6 +61,38 @@ async function applyCorrection(node, fix) {
     return newText;
   } catch (error) {
     console.error('Error applying fix:', error);
+    throw error;
+  }
+}
+
+// Scan all pages in the document
+async function scanAllPages() {
+  try {
+    // Load all pages first
+    await figma.loadAllPagesAsync();
+    
+    let allTextNodes = [];
+    
+    // Process each page
+    for (const page of figma.root.children) {
+      if (page.type === 'PAGE') {
+        try {
+          // Load the page content
+          await page.loadAsync();
+          
+          // Get text nodes from this page
+          const pageTextNodes = await getAllTextNodes(page);
+          allTextNodes = allTextNodes.concat(pageTextNodes);
+        } catch (pageError) {
+          console.error(`Error processing page ${page.name}:`, pageError);
+          // Continue with other pages
+        }
+      }
+    }
+    
+    return allTextNodes;
+  } catch (error) {
+    console.error('Error scanning all pages:', error);
     throw error;
   }
 }
@@ -105,7 +148,14 @@ figma.ui.onmessage = async (msg) => {
   } 
   else if (msg.type === 'get-document-text') {
     try {
-      const textNodes = getAllTextNodes();
+      // Inform UI that we're starting to scan
+      figma.ui.postMessage({ 
+        type: 'scan-started'
+      });
+      
+      // Get text nodes from all pages
+      const textNodes = await scanAllPages();
+      
       if (textNodes.length === 0) {
         figma.ui.postMessage({ 
           type: 'error', 
@@ -114,23 +164,42 @@ figma.ui.onmessage = async (msg) => {
         return;
       }
 
-      // Process each text node
+      let processedCount = 0;
+      const totalNodes = textNodes.length;
+      
+      // Process each text node with proper error handling for each node
       for (const node of textNodes) {
-        const text = node.characters;
-        if (text.trim()) {
-          try {
-            await loadTextNodeFonts(node);
-            figma.ui.postMessage({ 
-              type: 'text-content',
-              text: text,
-              nodeInfo: {
-                nodeId: node.id,
-                nodeName: node.name || 'Unnamed Text Layer'
-              }
-            });
-          } catch (error) {
-            console.error(`Error processing node ${node.id}:`, error);
+        try {
+          const text = node.characters;
+          if (text && text.trim()) {
+            try {
+              await loadTextNodeFonts(node);
+              figma.ui.postMessage({ 
+                type: 'text-content',
+                text: text,
+                nodeInfo: {
+                  nodeId: node.id,
+                  nodeName: node.name || 'Unnamed Text Layer'
+                }
+              });
+            } catch (nodeError) {
+              console.error(`Error processing node ${node.id}:`, nodeError);
+              // Continue processing other nodes
+            }
           }
+          
+          processedCount++;
+          // Send progress updates
+          if (processedCount % 5 === 0 || processedCount === totalNodes) {
+            figma.ui.postMessage({ 
+              type: 'progress-update',
+              processed: processedCount,
+              total: totalNodes
+            });
+          }
+        } catch (nodeError) {
+          console.error(`Error with text node ${node.id}:`, nodeError);
+          // Continue with other nodes
         }
       }
       
@@ -139,7 +208,7 @@ figma.ui.onmessage = async (msg) => {
       console.error('Error getting document text:', error);
       figma.ui.postMessage({ 
         type: 'error', 
-        message: 'Error getting document text' 
+        message: 'Error getting document text: ' + error.message 
       });
     }
   }

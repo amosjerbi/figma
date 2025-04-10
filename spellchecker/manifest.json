@@ -1,14 +1,10 @@
 {
   "name": "Grammar & Spelling Checker",
-  "id": "grammar-checker-plugin",
+  "id": "1492249764332232690",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
   "editorType": ["figma"],
-  "networkAccess": {
-    "allowedDomains": [
-      "https://api.dictionaryapi.dev",
-      "https://api.languagetool.org"
-    ]
-  }
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["https://api.languagetool.org"] }
 }
